@@ -4,6 +4,7 @@
 //pretpostavljeni memorijski model: huge
 #include <iostream.h>
 #include <dos.h>
+#include "SCHEDULE.H"
 
 // zabranjuje prekide
 #define lock asm cli
@@ -12,7 +13,6 @@
 #define unlock asm sti
 
 struct PCB{
-	unsigned bp;
 	unsigned sp;
 	unsigned ss;
 	unsigned finished;
@@ -101,41 +101,41 @@ void restore(){
 //pomocne promenljive za prekid tajmera
 unsigned tsp;
 unsigned tss;
-unsigned tbp;
 
 volatile int cntr = 20;
 volatile int context_switch_on_demand = 0;
 
 // nova prekidna rutina tajmera
 void interrupt timer(){
-	int dummy=0;
 	if (!context_switch_on_demand) cntr--; 
 	if (cntr == 0 || context_switch_on_demand) {
 		asm {
 			// cuva sp
 			mov tsp, sp
 			mov tss, ss
-			mov tbp, bp;
 		}
 
 		running->sp = tsp;
 		running->ss = tss;
-		running->bp = tbp;
 
 		// scheduler
-		running = getNextPCBToExecute();
-
+		//running = getNextPCBToExecute();
+		if(!running->finished) Scheduler::put((PCB*)running);
+		running=Scheduler::get();
+		
+		if(running->quantum == 0){
+			Scheduler::put((PCB*)running);
+			running=Scheduler::get();
+		}
+		
 		tsp = running->sp;
-		tss = running->ss;
-		tbp = running->bp;
+		tss = running->ss; 
 
 		cntr = running->quantum;
-
 		asm {
 			// restaurira sp
 			mov sp, tsp
 			mov ss, tss
-			mov bp, tbp
 		}     
 	} 
 
@@ -184,6 +184,17 @@ void b(){
 	exitThread();
 }
 
+void c(){
+	for (int i =0; i < 30; ++i) {
+		lock
+		cout<<"u c() i = "<<i<<endl;
+		unlock
+		for (int k = 0; k<10000; ++k)
+			for (int j = 0; j <30000; ++j);
+	}
+	exitThread();
+}
+
 void createProcess(PCB *newPCB, void (*body)()){
 	unsigned* st1 = new unsigned[1024];
 	// setovanje I flega u pocetnom PSW-u za nit
@@ -195,7 +206,6 @@ void createProcess(PCB *newPCB, void (*body)()){
 	//svi sacuvani registri pri ulasku u interrupt rutinu
 	newPCB->sp = FP_OFF(st1+1012); 
 	newPCB->ss = FP_SEG(st1+1012);
-	newPCB->bp = FP_OFF(st1+1012);
 #endif
 	// oznaka za kraj rada niti je na pocetku 0
 	newPCB->finished = 0;
@@ -207,18 +217,28 @@ void doSomething(){
 	createProcess(p[1],a);
 	cout<<"Napravio a"<<endl;
 	p[1]->quantum = 40;
+	Scheduler::put(p[1]);
 
 	p[2] = new PCB();
 	createProcess(p[2],b);
 	cout<<"Napravio b"<<endl;
 	p[2]->quantum = 20;
+	Scheduler::put(p[2]);
+
+	p[3] = new PCB();
+	createProcess(p[3],c);
+	cout<<"Napravio c"<<endl;
+	p[3]->quantum = 10;
+	Scheduler::put(p[3]);
 
 	p[0] = new PCB();
+	p[0]->finished=0;
+	p[0]->quantum=0;
 
 	running = p[0];
 	unlock
 
-	for (int i = 0; i < 30; ++i) {
+	for (int i = 0; i < 15; ++i) {
 		lock
 		cout<<"main "<<i<<endl;
 		unlock
