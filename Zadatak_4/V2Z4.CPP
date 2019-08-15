@@ -12,6 +12,7 @@
 #define unlock asm sti
 
 struct PCB{
+	unsigned bp;
 	unsigned sp;
 	unsigned ss;
 	unsigned finished;
@@ -100,28 +101,33 @@ void restore(){
 //pomocne promenljive za prekid tajmera
 unsigned tsp;
 unsigned tss;
+unsigned tbp;
 
 volatile int cntr = 20;
 volatile int context_switch_on_demand = 0;
 
 // nova prekidna rutina tajmera
 void interrupt timer(){
+	int dummy=0;
 	if (!context_switch_on_demand) cntr--; 
 	if (cntr == 0 || context_switch_on_demand) {
 		asm {
 			// cuva sp
 			mov tsp, sp
 			mov tss, ss
+			mov tbp, bp;
 		}
 
 		running->sp = tsp;
 		running->ss = tss;
+		running->bp = tbp;
 
 		// scheduler
 		running = getNextPCBToExecute();
 
 		tsp = running->sp;
-		tss = running->ss; 
+		tss = running->ss;
+		tbp = running->bp;
 
 		cntr = running->quantum;
 
@@ -129,6 +135,7 @@ void interrupt timer(){
 			// restaurira sp
 			mov sp, tsp
 			mov ss, tss
+			mov bp, tbp
 		}     
 	} 
 
@@ -182,11 +189,14 @@ void createProcess(PCB *newPCB, void (*body)()){
 	// setovanje I flega u pocetnom PSW-u za nit
 	st1[1023] =0x200;
 	// postavljanje adrese funkcije koju ce nit da izvrsava
+#ifndef BCC_BLOCK_IGNORE
 	st1[1022] = FP_SEG(body);
 	st1[1021] = FP_OFF(body);
 	//svi sacuvani registri pri ulasku u interrupt rutinu
 	newPCB->sp = FP_OFF(st1+1012); 
 	newPCB->ss = FP_SEG(st1+1012);
+	newPCB->bp = FP_OFF(st1+1012);
+#endif
 	// oznaka za kraj rada niti je na pocetku 0
 	newPCB->finished = 0;
 }
