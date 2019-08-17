@@ -1,9 +1,17 @@
 //  v2_zad1.cpp
 //  prevodjenje iz komandne linije: bcc -mh -Ic:\bc31\include -Lc:\bc31\lib v2_zad1.cpp
 
-#include <stdio.h>
+//////////////////////////////
+//program broji pritiske tastera i ispisuje ih nakon nekog vremena
+//////////////////////////////
 
-volatile int cntr = 0; // zasto volatile?
+#include <stdio.h>
+#include <dos.h>
+
+typedef void interrupt (*pInterrupt)(...); //pok na prekidnu rutinu koja vraca void i prima (...) param
+pInterrupt oldISR;
+
+volatile int cntr = 0; // volatile jer se moze menjati asinhrono, tj. van izvrsavanja glavnog programa
 
 // prekidna rutina koja broji pritiske tastera;
 // interrupt kljucna rec oznacava da se radi o prekidnoj rutini
@@ -35,53 +43,18 @@ unsigned oldKbdOFF, oldKbdSEG;
 // postavlja novu prekidnu rutinu
 // u Interrupt vektor tabeli
 void inic(){
-	asm{
-		cli				// zabranjuju se prekidi
-		push es
-		push ax
-
-		mov ax,0
-		mov es,ax			// es = 0
-
-		// pamti staru rutinu
-		// oldKbdSEG = [00026h]; - 9*4h+2h=26h
-		mov ax, word ptr es:0026h
-		mov word ptr oldKbdSEG, ax
-		// oldKbdOFF = [00024h]; - 9*4h=24h
-		mov ax, word ptr es:0024h
-		mov word ptr oldKbdOFF, ax
-
-		// postavlja novu rutinu
-		mov word ptr es:0026h, seg keyboardISR
-		mov word ptr es:0024h, offset keyboardISR
-
-		pop ax
-		pop es
-		sti				// dozvoljavaju se prekidi
-	}
+	asm cli;
+	oldISR = getvect(9);     // getvect(br) vraca sta pise u IV tabeli na ulazu br
+	setvect(9,keyboardISR);	 // setvect(br,adresa) postavlja adresu prekidne rutine na ulaz br IV tabele
+	asm sti;
 }
 
 // restauira staru prekidnu rutinu
 // u Interrupt vektor tabeli
 void restore(){
-	asm {
-		cli
-		push es
-		push ax
-
-		mov ax,0
-		mov es,ax
-
-		// vraca originalnu rutinu
-		mov ax, word ptr oldKbdSEG
-		mov word ptr es:0026h, ax
-		mov ax, word ptr oldKbdOFF
-		mov word ptr es:0024h, ax
-
-		pop ax
-		pop es
-		sti
-	}
+	asm cli;
+	setvect(9,oldISR);
+	asm sti;
 }
 
 void doSomething(){
@@ -94,6 +67,7 @@ void doSomething(){
 	printf("Tastatura je generisala %d dogadjaja!\n", cntr/2);
 	// Napomena: periferija generise prekid pri pritiskanju
 	// i otpustanju tastera
+	//zato cntr delim sa 2
 }
 
 int main(){
