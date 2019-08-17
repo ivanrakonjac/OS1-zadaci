@@ -1,18 +1,20 @@
 //  v2_zad4.cpp
 //  prevodjenje iz komandne linije: bcc -mh -Ic:\bc31\include -Lc:\bc31\lib v2_zad4.cpp
 
+//////////////////////////
+//dodata PCB.H i ostale izmene da bi radilo
+//////////////////////////
+
 //pretpostavljeni memorijski model: huge
 #include <iostream.h>
 #include <dos.h>
 #include "SCHEDULE.H"
+#include "PCB.H"
 
 typedef void interrupt (*pInterrupt)(...); //pok na prekidnu rutinu
 pInterrupt oldTimer;
 unsigned stara=0x8;
 unsigned nova=0x60;
-
-unsigned int ID=0;
-unsigned int n; //broj niti
 
 // zabranjuje prekide
 #define lock asm cli
@@ -20,35 +22,9 @@ unsigned int n; //broj niti
 // dozvoljava prekide
 #define unlock asm sti
 
-struct PCB{
-	unsigned bp;
-	unsigned sp;
-	unsigned ss;
-	unsigned finished;
-	int quantum;
-	int id;
-};
-
-//PCB *p[3];
 PCB** p;
-volatile PCB* running; 
+//volatile PCB* running;
 volatile int nextThread = 2;
-
-// rasporedjivac niti (scheduler)
-PCB* getNextPCBToExecute(){
-	if (nextThread == 1)
-		nextThread = 2;
-	else nextThread = 1;
-	
-	if (p[nextThread]->finished){
-		if (nextThread == 1)
-			nextThread = 2;
-		else nextThread = 1;
-		if (p[nextThread]->finished)
-			nextThread = 0;
-	}
-	return p[nextThread];
-}
 
 // stara prekidna rutina
 unsigned oldTimerOFF, oldTimerSEG;
@@ -100,26 +76,28 @@ void interrupt timer(...){
 				mov tbp, bp
 			}
 
-			running->sp = tsp;
-			running->ss = tss;
-			running->bp = tbp;
+			PCB::runnig->sp = tsp;
+			PCB::runnig->ss=tss;
+			PCB::runnig->bp=tbp;
 
 			// scheduler
-			//running = getNextPCBToExecute();
-			if(!running->finished) Scheduler::put((PCB*)running);
-			running=Scheduler::get();
+			//PCB::runnig = getNextPCBToExecute();
 
-			if(running->quantum == 0){
-				Scheduler::put((PCB*)running);
-				running=Scheduler::get();
+			if(PCB::runnig->state!=PCB::FINISHED) Scheduler::put((PCB*)PCB::runnig);
+			PCB::runnig=Scheduler::get();
+
+			if(PCB::runnig->quantum==0){
+				Scheduler::put((PCB*)PCB::runnig);
+				PCB::runnig=Scheduler::get();
 			}
 
-			tsp = running->sp;
-			tss = running->ss;
-			tbp = running->bp;
+			tsp = PCB::runnig->sp;
+			tss = PCB::runnig->ss;
+			tbp = PCB::runnig->bp;
 
-			tid = running->id;
-			cntr = running->quantum;
+			tid = PCB::runnig->id;
+			cntr = PCB::runnig->quantum;
+
 
 			asm {
 				// restaurira sp
@@ -152,7 +130,7 @@ void dispatch(){
 }
 
 void exitThread(){
-	running->finished = 1;
+	PCB::runnig->state = PCB::FINISHED;
 	dispatch();
 }
 
@@ -202,65 +180,22 @@ void f(){
 		exitThread();
 }
 
-void createProcess(PCB *newPCB, void (*body)()){
-	unsigned* st1 = new unsigned[1024];
-	// setovanje I flega u pocetnom PSW-u za nit
-	st1[1023] =0x200;
-	// postavljanje adrese funkcije koju ce nit da izvrsava
-#ifndef BCC_BLOCK_IGNORE
-	st1[1022] = FP_SEG(body);
-	st1[1021] = FP_OFF(body);
-	//svi sacuvani registri pri ulasku u interrupt rutinu
-	newPCB->sp = FP_OFF(st1+1012); 
-	newPCB->ss = FP_SEG(st1+1012);
-	newPCB->bp = FP_OFF(st1+1012);
-#endif
-	// oznaka za kraj rada niti je na pocetku 0
-	newPCB->finished = 0;
-	newPCB->id=++ID;
-}
 
 void doSomething(){
 	lock
-	/*
-	p[1] = new PCB();
-	createProcess(p[1],a);
-	cout<<"Napravio a"<<endl;
-	p[1]->quantum = 40;
-	Scheduler::put(p[1]);
 
-	p[2] = new PCB();
-	createProcess(p[2],b);
-	cout<<"Napravio b"<<endl;
-	p[2]->quantum = 20;
-	Scheduler::put(p[2]);
+	//testiram sa 10 niti
 
-	p[3] = new PCB();
-	createProcess(p[3],c);
-	cout<<"Napravio c"<<endl;
-	p[3]->quantum = 10;
-	Scheduler::put(p[3]);
-	*/
+	p= new PCB*[10];
 
-	cout<<"Koliko niti zelite da kreirate?"<<endl;
-	cin>>n;
-	cout<<n<<endl;
-
-	p=new PCB*[n];
-
-	for(int b=0;b<n;++b){
-		p[b] = new PCB();
-		createProcess(p[b],f);
-		cout<<"Napravio funkciju_"<<b<<endl;
-		p[b]->quantum = 20;
-		Scheduler::put(p[b]);
+	for (int br = 1; br < 10; ++br) {
+		p[br] = new PCB(1024,(br%2)?40:20,f);  //(br%2)?40:20 da bi se niti razlikovale po vremenu izvrsavanja
+		Scheduler::put(p[br]);
 	}
 
-	p[0] = new PCB();
-	p[0]->finished=0;
-	p[0]->quantum=0;
 
-	running = p[0];
+	p[0] = new PCB();
+	PCB::runnig = p[0];
 	unlock
 
 	for (int i = 0; i < 15; ++i) {
