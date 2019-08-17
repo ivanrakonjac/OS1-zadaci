@@ -6,6 +6,11 @@
 #include <dos.h>
 #include "SCHEDULE.H"
 
+typedef void interrupt (*pInterrupt)(...); //pok na prekidnu rutinu
+pInterrupt oldTimer;
+unsigned stara=0x8;
+unsigned nova=0x60;
+
 unsigned int ID=0;
 unsigned int n; //broj niti
 
@@ -49,59 +54,25 @@ PCB* getNextPCBToExecute(){
 unsigned oldTimerOFF, oldTimerSEG;
 
 // deklaracija nove prekidne rutine
-void interrupt timer();
+void interrupt timer(...);
 
 // postavlja novu prekidnu rutinu
 void inic(){
-	asm{
-		cli
-		push es
-		push ax
-		
-		mov ax,0
-		mov es,ax // es = 0
-		
-		// pamti staru rutinu
-		mov ax, word ptr es:0022h
-		mov word ptr oldTimerSEG, ax
-		mov ax, word ptr es:0020h
-		mov word ptr oldTimerOFF, ax
-		
-		// postavlja novu rutinu
-		mov word ptr es:0022h, seg timer
-		mov word ptr es:0020h, offset timer
-		
-		// postavlja staru rutinu na int 60h
-		mov ax, oldTimerSEG
-		mov word ptr es:0182h, ax
-		mov ax, oldTimerOFF
-		mov word ptr es:0180h, ax
-
-		pop ax
-		pop es
-		sti
-	}
+	asm cli;
+	//cuvam staru prekidnu rutinu
+	oldTimer=getvect(stara);
+	//na 08h stavljam novu
+	setvect(stara,timer);
+	//staru premestam na 60h
+	setvect(nova,oldTimer);
+	asm sti;
 }
 
 // vraca staru prekidnu rutinu
 void restore(){
-	asm {
-		cli
-		push es
-		push ax
-
-		mov ax,0
-		mov es,ax
-
-		mov ax, word ptr oldTimerSEG
-		mov word ptr es:0022h, ax
-		mov ax, word ptr oldTimerOFF
-		mov word ptr es:0020h, ax
-
-		pop ax
-		pop es
-		sti
-	}
+	asm cli;
+	setvect(stara,oldTimer);
+	asm sti;
 }
 
 //pomocne promenljive za prekid tajmera
@@ -116,7 +87,7 @@ volatile int cntr = 20;
 volatile int context_switch_on_demand = 0;
 
 // nova prekidna rutina tajmera
-void interrupt timer(){
+void interrupt timer(...){
 	int dummy=0;
 	if (!context_switch_on_demand) cntr--; 
 	if (cntr == 0 || context_switch_on_demand) {
