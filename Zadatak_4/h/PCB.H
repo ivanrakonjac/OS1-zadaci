@@ -20,8 +20,8 @@ public:
 private:
 
 	friend void interrupt timer(...);
-	friend void dispatch();
 	friend void exitThread();
+	friend void f();
 
 	unsigned bp;
 	unsigned sp;
@@ -30,6 +30,10 @@ private:
 	unsigned* stack;
 	int quantum;
 	int id;
+
+	friend int main();
+
+
 
 };
 
