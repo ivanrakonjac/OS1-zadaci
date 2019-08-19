@@ -1,11 +1,5 @@
-//  v2_zad4.cpp
+//usermain.cpp
 
-
-//////////////////////////
-//dodat SYSTEM.H, SYSTEM.CPP,a ostalo podeseno da bi radilo
-//////////////////////////
-
-//pretpostavljeni memorijski model: huge
 #include <iostream.h>
 #include <dos.h>
 #include "SCHEDULE.H"
@@ -65,14 +59,14 @@ void doSomething(){
 	cout<<"Srecan kraj!"<<endl;
 }
 
-int main(){
-	
-	System::inic();
+void tick() {
+	//u javnom testu
+}
+
+int userMain(int argc, char *argv[]) {
+	cout<<"USer main"<<endl;
 
 	doSomething();
 
-	System::restore();
-
 	return 0;
-
 }
